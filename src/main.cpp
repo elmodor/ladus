@@ -25,18 +25,22 @@ int main(int argc, char** argv) {
 			layout(location = 1) in vec3 in_normal;
 			uniform mat4 u_mvp;
 			out vec3 v_normal;
+			out float v_z;
 			void main() {
 				gl_Position = u_mvp * vec4(in_pos, 1.0);
 				v_normal = in_normal;
+				v_z = in_pos.z;
 			}
 		), FRAGMENT_SHADER(
 			in vec3 v_normal;
+			in float v_z;
 			out vec4 out_color;
 			void main() {
-//				out_color = vec4(normalize(v_normal) * 0.5 + vec3(0.5), 1.0);
-				out_color = vec4(
-					vec3(0.5) * (0.1 + 0.9 * max(0, dot(normalize(vec3(0.3, 0.6, 2.0)), normalize(v_normal)))),
-					1.0);
+				out_color = vec4(normalize(v_normal) * 0.25 + vec3(0.5), 1.0);
+//				out_color = vec4(
+//					vec3(0.5) * (0.1 + 0.9 * max(0, dot(normalize(vec3(0.3, 0.6, 2.0)), normalize(v_normal)))),
+//					1.0);
+				out_color *= 0.6 + v_z * 0.05;
 			}
 		));
 
@@ -64,6 +68,12 @@ int main(int argc, char** argv) {
 	rs.depth_test_enabled = true;
 
 
+	SDL_ShowCursor(SDL_DISABLE);
+	SDL_SetRelativeMouseMode(SDL_TRUE);
+
+
+	glm::vec2	camera;
+
 	bool running = true;
 	while (running) {
 		SDL_Event e;
@@ -88,6 +98,12 @@ int main(int argc, char** argv) {
 				}
 				break;
 
+
+			case SDL_MOUSEMOTION:
+				camera.x -= e.motion.xrel * 0.1;
+				camera.y += e.motion.yrel * 0.1;
+
+
 			default: break;
 			}
 		}
@@ -99,10 +115,11 @@ int main(int argc, char** argv) {
 
 
 
-		static float ang = 0;
-		ang += 0.005;
+//		static float ang = 0;
+//		ang += 0.005;
 		glm::mat4 mvp = glm::perspectiveFov<float>(1.0, 800, 600, 1, 100)
-					  * glm::translate(glm::vec3(-12 + sin(ang) * 25, -5, -20));
+//					  * glm::translate(glm::vec3(-12 + sin(ang) * 25, -5, -20));
+					  * glm::translate(glm::vec3(camera.x, camera.y, -25));
 		model_shader->set_uniform("u_mvp", mvp);
 
 		ctx.draw(rs, *model_shader, *model_va);

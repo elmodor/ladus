@@ -62,12 +62,7 @@ for o in scene.objects:
 
 		for v in f.verts:
 			write("vertex %g %g %g\n" % (v.co.x, v.co.z, -v.co.y))
-			# calculate normal for fake ambient light
-			n = (v.normal + f.normal * 2).normalized()
-			write("normal %g %g %g\n" % (n.x, n.z, -n.y))
-
-#			write("normal %g %g %g\n" % (v.normal.x, v.normal.z, -v.normal.y))
-#			write("normal %g %g %g\n" % (f.normal.x, f.normal.z, -f.normal.y))
+			write("normal %g %g %g\n" % (v.normal.x, v.normal.z, -v.normal.y))
 
 
 
