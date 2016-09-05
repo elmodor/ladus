@@ -1,5 +1,5 @@
-CF = -Wall --std=c++14 -O2
-LF = -Wall --std=c++14 -lSDL2 -lSDL2_image -lGLEW -lGL
+CF = -Wall --std=c++14 -g $(shell pkg-config --cflags bullet)
+LF = -Wall --std=c++14 -lSDL2 -lSDL2_image -lGLEW -lGL -lBulletDynamics -lBulletCollision -lLinearMath
 CXX = g++
 SRC = $(wildcard src/*.cpp)
 OBJ = $(SRC:src/%.cpp=obj/%.o)
