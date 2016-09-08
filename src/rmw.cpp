@@ -209,9 +209,9 @@ bool Context::init(int width, int height)
 	SDL_Init(SDL_INIT_VIDEO);
 	IMG_Init(IMG_INIT_PNG);
 
-//		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-//		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-//		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+//	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+//	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+//	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	_window = SDL_CreateWindow("portals",
 			SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -223,6 +223,12 @@ bool Context::init(int width, int height)
 
 	glewExperimental = true;
 	glewInit();
+
+
+
+	// initialize the reder state according to opengl's initial state
+	_render_state.depth_test_enabled = 0;
+	_render_state.depth_test_func = DepthTestFunc::Less;
 
 	return true;
 }
@@ -275,7 +281,10 @@ void Context::draw(const RenderState& rs, const Shader& shader, const VertexArra
 					_render_state.viewport.w,
 					_render_state.viewport.h);
 	}
-
+	if (_render_state.line_width != rs.line_width) {
+		_render_state.line_width = rs.line_width;
+		glLineWidth(_render_state.line_width);
+	}
 
 
 	// sync shader

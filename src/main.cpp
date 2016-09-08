@@ -56,6 +56,7 @@ public:
 
 		vertex_buffer->init_data(vertices);
 		vertex_array->set_count(vertices.size());
+
 		ctx.draw(rs, *shader, *vertex_array);
 
 		vertices.clear();
@@ -80,13 +81,12 @@ public:
 			btScalar distance,
 			int lifeTime,
 			const btVector3 &color)
-	{
-	}
+	{}
 
-	void reportErrorWarning(const char* warningString) override {
+	void reportErrorWarning(const char* str) override {
+		printf("DebugDrawer: %s\n", str);
 	}
-	void draw3dText(const btVector3& location, const char* textString) override {
-	}
+	void draw3dText(const btVector3& location, const char* textString) override {}
 
 	void setDebugMode(int debugMode) override {
 		mode = debugMode;
@@ -102,7 +102,7 @@ private:
 	rmw::Shader::Ptr		shader;
 	rmw::VertexBuffer::Ptr	vertex_buffer;
 	rmw::VertexArray::Ptr	vertex_array;
-	std::vector<Vertex>		vertices;
+	std::vector<Vertex>		vertices; // line list
 	int						mode;
 };
 
@@ -110,7 +110,16 @@ private:
 
 
 
+class Player {
+public:
 
+
+//private:
+	std::unique_ptr<btBoxShape>				shape;
+	std::unique_ptr<btDefaultMotionState>	motion_state;
+	std::unique_ptr<btRigidBody>			rigid_body;
+
+};
 
 
 
@@ -178,52 +187,84 @@ public:
 				solver.get(),
 				collision_conf.get());
 
-		dynamics_world->setGravity(btVector3(0, -10, 0));
+		dynamics_world->setGravity(btVector3(0, -30, 0));
 		dynamics_world->setInternalTickCallback(Scene::update, static_cast<void*>(this), false);
-
-
-
-
-
-		// load mesh into mesh interface
-		// the vertices must be indexed over their position (like in obj files)
-
-		// FIXME
-		static std::vector<int> indices;
-		for (size_t i = 0; i < model.meshes[0].vertices.size(); ++i) {
-			indices.push_back(i);
-		}
-		interface = std::make_unique<btTriangleIndexVertexArray>(
-				indices.size() / 3,
-				indices.data(),
-				sizeof(int) * 3,
-				model.meshes[0].vertices.size(),
-				(float*) model.meshes[0].vertices.data(),
-				sizeof(Model::Vertex));
-
-
-		shape = std::make_unique<btBvhTriangleMeshShape>(interface.get(), true);
-
-
-		motion_state = std::make_unique<btDefaultMotionState>(
-				btTransform(btQuaternion(0, 0, 0, 1),
-				btVector3(0, 0, 0)));
-
-		auto construction_info = btRigidBody::btRigidBodyConstructionInfo(
-				0,
-				motion_state.get(),
-				shape.get(),
-				btVector3(0, 0, 0));
-
-		rigid_body = std::make_unique<btRigidBody>(construction_info);
-
-		dynamics_world->addRigidBody(rigid_body.get());
 
 
 		// debug drawing
 		drawer.init();
 		drawer.setDebugMode(btIDebugDraw::DBG_DrawWireframe);
 		dynamics_world->setDebugDrawer(&drawer);
+
+
+
+		// map
+		{
+			// load mesh into mesh interface
+			// the vertices must be indexed over their position (like in obj files)
+
+			// FIXME: this is bad
+			static std::vector<int> indices;
+			for (size_t i = 0; i < model.meshes[0].vertices.size(); ++i) {
+				indices.push_back(i);
+			}
+
+			interface = std::make_unique<btTriangleIndexVertexArray>(
+					indices.size() / 3,
+					indices.data(),
+					sizeof(int) * 3,
+					model.meshes[0].vertices.size(),
+					(float*) model.meshes[0].vertices.data(),
+					sizeof(Model::Vertex));
+
+
+			shape = std::make_unique<btBvhTriangleMeshShape>(interface.get(), true);
+
+			motion_state = std::make_unique<btDefaultMotionState>(
+					btTransform(btQuaternion(0, 0, 0, 1),
+					btVector3(0, 0, 0)));
+
+			auto construction_info = btRigidBody::btRigidBodyConstructionInfo(
+					0, // mass of 0 means static world
+					motion_state.get(), shape.get());
+
+			rigid_body = std::make_unique<btRigidBody>(construction_info);
+
+
+
+			// disable debug drawer for map
+			int f = rigid_body->getCollisionFlags();
+			rigid_body->setCollisionFlags(f | btCollisionObject::CF_DISABLE_VISUALIZE_OBJECT);
+
+			dynamics_world->addRigidBody(rigid_body.get());
+		}
+
+
+
+
+		// player
+		{
+			player.shape = std::make_unique<btBoxShape>(btVector3(1, 1.5, 1));
+
+
+			player.motion_state = std::make_unique<btDefaultMotionState>(
+					btTransform(btQuaternion(0, 0, 0, 1),
+					btVector3(5, 0, 0)));
+
+			float		mass = 100;
+			btVector3	inertia(0, 0, 0);
+//			player.shape->calculateLocalInertia(mass, inertia);
+
+			auto construction_info = btRigidBody::btRigidBodyConstructionInfo(
+					mass,
+					player.motion_state.get(),
+					player.shape.get(),
+					inertia);
+
+			player.rigid_body = std::make_unique<btRigidBody>(construction_info);
+
+			dynamics_world->addRigidBody(player.rigid_body.get());
+		}
 	}
 
 	void update(float dt) {
@@ -251,7 +292,28 @@ private:
 
 	void tick() {
 
+		auto ks = SDL_GetKeyboardState(nullptr);
+		int dx = !!ks[SDL_SCANCODE_RIGHT] - !!ks[SDL_SCANCODE_LEFT];
+		int dy = !!ks[SDL_SCANCODE_UP] - !!ks[SDL_SCANCODE_DOWN];
 
+
+		btVector3 vel = player.rigid_body->getLinearVelocity();
+
+		// walking
+		vel.setX(std::min(10.0f, std::max(-10.0f, vel.x() + dx)));
+
+		// z correction
+		vel.setZ(std::min(5.0f, std::max(-5.0f, vel.z() - dy)));
+
+		// jumping
+		if (ks[SDL_SCANCODE_X]) vel.setY(20);
+		else if (vel.y() > 10) vel.setY(10);
+
+
+		player.rigid_body->setLinearVelocity(vel);
+
+
+		if (!vel.isZero()) player.rigid_body->activate();
 
 	}
 
@@ -283,6 +345,11 @@ private:
 	std::unique_ptr<btDefaultMotionState>					motion_state;
 	std::unique_ptr<btRigidBody>							rigid_body;
 
+
+
+	Player	player;
+
+
 };
 
 
@@ -305,8 +372,7 @@ int main(int argc, char** argv) {
 
 
 	rmw::RenderState rs;
-	rs.depth_test_func = rmw::DepthTestFunc::LEqual;
-	rs.depth_test_enabled = true;
+	rs.line_width = 2.0;
 
 
 	SDL_ShowCursor(SDL_DISABLE);

@@ -24,8 +24,11 @@ struct Viewport { int x=0, y=0, w=0, h=0; };
 
 struct RenderState {
 	Viewport		viewport;
-	bool			depth_test_enabled;
-	DepthTestFunc	depth_test_func;
+	bool			depth_test_enabled	= true;
+	DepthTestFunc	depth_test_func		= DepthTestFunc::LEqual;
+
+	float			line_width			= 1;
+
 	// TODO:
 	// blending
 	// ...
