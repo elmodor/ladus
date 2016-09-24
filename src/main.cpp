@@ -63,16 +63,23 @@ public:
 	}
 
 
+	// the line method i use myself
+	void draw_line(const glm::vec2& a, const glm::vec2& b, const glm::vec3& color) {
+		vertices.push_back({ glm::vec3(a, 0), color });
+		vertices.push_back({ glm::vec3(b, 0), color });
+	}
+
+
+
 	void drawLine(const btVector3& a, const btVector3& b, const btVector3& color) override {
 		vertices.push_back({
-			* (glm::vec3*) & a,
-			* (glm::vec3*) & color,
+			*(glm::vec3*) & a,
+			*(glm::vec3*) & color,
 		});
 		vertices.push_back({
-			* (glm::vec3*) & b,
-			* (glm::vec3*) & color,
+			*(glm::vec3*) & b,
+			*(glm::vec3*) & color,
 		});
-
 	}
 
 	void drawContactPoint (
@@ -110,9 +117,7 @@ private:
 
 
 
-class Player {
-public:
-
+struct Player {
 
 //private:
 	std::unique_ptr<btBoxShape>				shape;
@@ -121,6 +126,17 @@ public:
 
 };
 
+
+
+struct Player2 {
+	glm::vec2	size { 2, 3 };
+
+	glm::vec2	pos;
+	glm::vec2	vel;
+
+	bool		in_air;
+
+};
 
 
 class Scene {
@@ -280,48 +296,85 @@ public:
 		ctx.draw(rs, *shader, *vertex_array);
 
 
+
 		// debug drawing
 		dynamics_world->debugDrawWorld();
+
+		auto a = player2.size * 0.5f;
+		auto b = glm::vec2(a.x, -a.y);
+		drawer.draw_line(player2.pos + a, player2.pos + b, glm::vec3(1, 0, 0));
+		drawer.draw_line(player2.pos + b, player2.pos - a, glm::vec3(1, 0, 0));
+		drawer.draw_line(player2.pos - a, player2.pos - b, glm::vec3(1, 0, 0));
+		drawer.draw_line(player2.pos - b, player2.pos + a, glm::vec3(1, 0, 0));
+
+
+
+		// sensor lines
+		drawer.draw_line(va, vb, glm::vec3(1, 1, 0));
+		drawer.draw_line(vb - glm::vec2(0.1, 0), vb + glm::vec2(0.1, 0), glm::vec3(1, 1, 0));
+
 		drawer.draw(rs, mvp);
 	}
 
 
 private:
-	DebugDrawer drawer;
-
-
-	void tick() {
-
-		auto ks = SDL_GetKeyboardState(nullptr);
-		int dx = !!ks[SDL_SCANCODE_RIGHT] - !!ks[SDL_SCANCODE_LEFT];
-		int dy = !!ks[SDL_SCANCODE_UP] - !!ks[SDL_SCANCODE_DOWN];
-
-
-		btVector3 vel = player.rigid_body->getLinearVelocity();
-
-		// walking
-		vel.setX(std::min(10.0f, std::max(-10.0f, vel.x() + dx)));
-
-		// z correction
-		vel.setZ(std::min(5.0f, std::max(-5.0f, vel.z() - dy)));
-
-		// jumping
-		if (ks[SDL_SCANCODE_X]) vel.setY(20);
-		else if (vel.y() > 10) vel.setY(10);
-
-
-		player.rigid_body->setLinearVelocity(vel);
-
-
-		if (!vel.isZero()) player.rigid_body->activate();
-
-	}
-
-
 	static void update(btDynamicsWorld* dynamics_world, float dt) {
 		static_cast<Scene*>(dynamics_world->getWorldUserInfo())->tick();
 	}
 
+
+	glm::vec2 va, vb;
+
+	void tick() {
+
+		const Uint8* ks = SDL_GetKeyboardState(nullptr);
+		int dx = !!ks[SDL_SCANCODE_RIGHT] - !!ks[SDL_SCANCODE_LEFT];
+		int dy = !!ks[SDL_SCANCODE_UP] - !!ks[SDL_SCANCODE_DOWN];
+
+
+		// player
+		if (false) {
+			btVector3 vel = player.rigid_body->getLinearVelocity();
+
+			// walking
+			vel.setX(std::min(10.0f, std::max(-10.0f, vel.x() + dx)));
+
+			// z correction
+			vel.setZ(std::min(5.0f, std::max(-5.0f, vel.z() - dy)));
+
+			// jumping
+			if (ks[SDL_SCANCODE_X]) vel.setY(20);
+			else if (vel.y() > 10) vel.setY(10);
+
+			player.rigid_body->setLinearVelocity(vel);
+
+			if (!vel.isZero()) player.rigid_body->activate();
+		}
+
+		// player2
+		{
+			player2.pos.x += dx * 0.1;
+			player2.pos.y += dy * 0.1;
+
+
+			va = player2.pos;
+			vb = va + glm::vec2(0, -player2.size.y);
+
+			btCollisionWorld::ClosestRayResultCallback cb(
+					btVector3(va.x, va.y, 0),
+					btVector3(vb.x, vb.y, 0));
+			dynamics_world->rayTest(cb.m_rayFromWorld, cb.m_rayToWorld, cb);
+			if (cb.hasHit()) {
+				vb.x = cb.m_hitPointWorld.x();
+				vb.y = cb.m_hitPointWorld.y();
+			}
+		}
+
+
+	}
+
+
+	DebugDrawer					drawer;
 
 	Model						model;
 
@@ -347,7 +400,8 @@ private:
 
 
 
-	Player	player;
+	Player		player;
+	Player2		player2;
 
 
 };
@@ -411,6 +465,7 @@ int main(int argc, char** argv) {
 			case SDL_MOUSEMOTION:
 				camera.x -= e.motion.xrel * 0.1;
 				camera.y += e.motion.yrel * 0.1;
+				break;
 
 
 			default: break;
