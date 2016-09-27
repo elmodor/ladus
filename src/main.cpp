@@ -50,6 +50,10 @@ public:
 
 	}
 
+	void clear() {
+		vertices.clear();
+	}
+
 	void draw(rmw::RenderState rs, const glm::mat4& mvp) {
 
 		shader->set_uniform("u_mvp", mvp);
@@ -57,16 +61,25 @@ public:
 		vertex_buffer->init_data(vertices);
 		vertex_array->set_count(vertices.size());
 
+		rs.depth_test_enabled = false;
 		ctx.draw(rs, *shader, *vertex_array);
 
-		vertices.clear();
+		clear();
 	}
 
 
 	// the line method i use myself
-	void draw_line(const glm::vec2& a, const glm::vec2& b, const glm::vec3& color) {
+	void line(const glm::vec2& a, const glm::vec2& b, const glm::vec3& color) {
 		vertices.push_back({ glm::vec3(a, 0), color });
 		vertices.push_back({ glm::vec3(b, 0), color });
+	}
+	void circle(const glm::vec2& a, float r, const glm::vec3& color) {
+		glm::vec2 p = a + glm::vec2(0, r);
+		for (int i = 1; i <= 8; i++) {
+			glm::vec2 q = a + glm::vec2(sin(i / 4.0f * M_PI), cos(i / 4.0f * M_PI)) * r;
+			line(p, q, color);
+			p = q;
+		}
 	}
 
 
@@ -131,7 +144,7 @@ struct Player {
 struct Player2 {
 	glm::vec2	size { 2, 3 };
 
-	glm::vec2	pos;
+	glm::vec2	pos { 0, 0 };
 	glm::vec2	vel;
 
 	bool		in_air;
@@ -302,16 +315,16 @@ public:
 
 		auto a = player2.size * 0.5f;
 		auto b = glm::vec2(a.x, -a.y);
-		drawer.draw_line(player2.pos + a, player2.pos + b, glm::vec3(1, 0, 0));
-		drawer.draw_line(player2.pos + b, player2.pos - a, glm::vec3(1, 0, 0));
-		drawer.draw_line(player2.pos - a, player2.pos - b, glm::vec3(1, 0, 0));
-		drawer.draw_line(player2.pos - b, player2.pos + a, glm::vec3(1, 0, 0));
+
+		auto col = player2.in_air ? glm::vec3(1, 0, 0) : glm::vec3(0, 0, 1);
+
+		drawer.line(player2.pos + a, player2.pos + b, col);
+		drawer.line(player2.pos + b, player2.pos - a, col);
+		drawer.line(player2.pos - a, player2.pos - b, col);
+		drawer.line(player2.pos - b, player2.pos + a, col);
 
 
 
-		// sensor lines
-		drawer.draw_line(va, vb, glm::vec3(1, 1, 0));
-		drawer.draw_line(vb - glm::vec2(0.1, 0), vb + glm::vec2(0.1, 0), glm::vec3(1, 1, 0));
 
 		drawer.draw(rs, mvp);
 	}
@@ -323,8 +336,6 @@ private:
 	}
 
 
-	glm::vec2 va, vb;
-
 	void tick() {
 
 		const Uint8* ks = SDL_GetKeyboardState(nullptr);
@@ -333,41 +344,82 @@ private:
 
 
 		// player
-		if (false) {
-			btVector3 vel = player.rigid_body->getLinearVelocity();
+//		{
+//			btVector3 vel = player.rigid_body->getLinearVelocity();
+//
+//			// walking
+//			vel.setX(std::min(10.0f, std::max(-10.0f, vel.x() + dx)));
+//
+//			// z correction
+//			vel.setZ(std::min(5.0f, std::max(-5.0f, vel.z() - dy)));
+//
+//			// jumping
+//			if (ks[SDL_SCANCODE_X]) vel.setY(20);
+//			else if (vel.y() > 10) vel.setY(10);
+//
+//			player.rigid_body->setLinearVelocity(vel);
+//
+//			if (!vel.isZero()) player.rigid_body->activate();
+//		}
 
-			// walking
-			vel.setX(std::min(10.0f, std::max(-10.0f, vel.x() + dx)));
-
-			// z correction
-			vel.setZ(std::min(5.0f, std::max(-5.0f, vel.z() - dy)));
-
-			// jumping
-			if (ks[SDL_SCANCODE_X]) vel.setY(20);
-			else if (vel.y() > 10) vel.setY(10);
-
-			player.rigid_body->setLinearVelocity(vel);
-
-			if (!vel.isZero()) player.rigid_body->activate();
-		}
 
 		// player2
 		{
-			player2.pos.x += dx * 0.1;
-			player2.pos.y += dy * 0.1;
+
+			player2.vel.x = dx * 0.2;
+//			player2.vel.y = dy * 0.1;
 
 
-			va = player2.pos;
-			vb = va + glm::vec2(0, -player2.size.y);
+
+			if (player2.in_air) {
+				// gravity
+				player2.vel.y -= 0.02;
+
+			}
+			else {
+
+				if (dy == 1) {
+					player2.vel.y = 0.7;
+					player2.pos.y += 0.5;
+				}
+			}
+
+
+			glm::vec2 dp(
+				std::max( -0.5f, std::min( 0.5f, player2.vel.x)),
+				std::max( -0.5f, std::min( 0.5f, player2.vel.y)));
+
+			player2.pos += dp;
+
+
+			glm::vec2 va = player2.pos;
+			glm::vec2 vb = va - glm::vec2(0, player2.size.y * 0.5);
+
+			// scan a bit further down
+			if (!player2.in_air) vb.y -= 0.3;
 
 			btCollisionWorld::ClosestRayResultCallback cb(
 					btVector3(va.x, va.y, 0),
 					btVector3(vb.x, vb.y, 0));
 			dynamics_world->rayTest(cb.m_rayFromWorld, cb.m_rayToWorld, cb);
+
+
 			if (cb.hasHit()) {
-				vb.x = cb.m_hitPointWorld.x();
-				vb.y = cb.m_hitPointWorld.y();
+				player2.in_air = false;
+
+				player2.vel.y = 0;
+				player2.pos.y = cb.m_hitPointWorld.y() + player2.size.y * 0.5;
 			}
+			else {
+				player2.in_air = true;
+			}
+
+
+			// sensor lines
+			drawer.clear();
+			drawer.line(va, vb, glm::vec3(1, 1, 0));
+			if (cb.hasHit()) drawer.circle(glm::vec2(cb.m_hitPointWorld.x(), cb.m_hitPointWorld.y()), 0.2, glm::vec3(1, 0, 0));
+
 		}
 
 
@@ -399,6 +451,8 @@ private:
 	std::unique_ptr<btRigidBody>							rigid_body;
 
 
+
+public:
 
 	Player		player;
 	Player2		player2;
@@ -486,9 +540,11 @@ int main(int argc, char** argv) {
 
 		ctx.clear(cs);
 
-		glm::mat4 mvp = glm::perspectiveFov<float>(1.0, 800, 600, 1, 100)
-					  * glm::translate(glm::vec3(camera.x, camera.y, -25));
+//		glm::mat4 mvp = glm::perspectiveFov<float>(1.0, 800, 600, 1, 100)
+//					  * glm::translate(glm::vec3(camera.x, camera.y, -25));
 
+		glm::mat4 mvp = glm::perspectiveFov<float>(1.0, 800, 600, 1, 100)
+					  * glm::translate(-glm::vec3(scene.player2.pos.x, scene.player2.pos.y, 25));
 		scene.draw(rs, mvp);
 
 
